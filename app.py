@@ -285,10 +285,35 @@ async def main() -> None:
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info", access_log=False)
     )
+    server_task = asyncio.create_task(server.serve(), name="tg-video-api")
+    telegram_task = asyncio.create_task(
+        client.run_until_disconnected(), name="tg-video-telegram"
+    )
+
     try:
-        await asyncio.gather(server.serve(), client.run_until_disconnected())
+        done, _pending = await asyncio.wait(
+            {server_task, telegram_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Propagate unexpected exceptions from either long-running component.
+        for task in done:
+            await task
+
+        if telegram_task in done and not server_task.done():
+            raise RuntimeError("Telethon disconnected unexpectedly")
     finally:
-        await client.disconnect()
+        # Uvicorn handles SIGINT/SIGTERM by setting should_exit. Ensure both
+        # long-running tasks stop together, then close the MTProto connection.
+        server.should_exit = True
+        for task in (server_task, telegram_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(
+            server_task, telegram_task, return_exceptions=True
+        )
+        if client.is_connected():
+            await client.disconnect()
 
 
 if __name__ == "__main__":
