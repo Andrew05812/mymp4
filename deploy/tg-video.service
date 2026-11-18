@@ -1,0 +1,25 @@
+[Unit]
+Description=tg-video Telegram channel video forwarder
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+User=adelf
+Group=adelf
+WorkingDirectory=/home/adelf/projects/tg-video
+EnvironmentFile=/home/adelf/projects/tg-video/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/adelf/projects/tg-video/.venv/bin/python /home/adelf/projects/tg-video/app.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/adelf/projects/tg-video/data
+
+[Install]
+WantedBy=multi-user.target
