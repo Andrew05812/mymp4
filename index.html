@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px;
+         background: var(--tg-theme-bg-color); color: var(--tg-theme-text-color); }
+  h3 { margin: 16px 0 8px; }
+  input, select, button { font-size: 15px; padding: 8px; border-radius: 8px;
+         border: 1px solid #8884; background: var(--tg-theme-secondary-bg-color);
+         color: var(--tg-theme-text-color); }
+  button { background: var(--tg-theme-button-color); color: var(--tg-theme-button-text-color); border: 0; }
+  .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; flex-wrap: wrap; }
+  .ch { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0;
+        border-bottom: 1px solid #8883; align-items: center; }
+  .ch span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .ch select { max-width: 45%; }
+</style>
+</head>
+<body>
+<h3>Категории</h3>
+<div id="cats"></div>
+<div class="row">
+  <input id="n" placeholder="Название" style="width:110px">
+  <input id="t" placeholder="ID темы" type="number" style="width:80px">
+  <input id="m" placeholder="Мин. сек" type="number" value="30" style="width:80px">
+  <button onclick="addCat()">Добавить</button>
+</div>
+
+<h3>Каналы</h3>
+<input id="q" placeholder="Поиск" oninput="render()" style="width:100%;box-sizing:border-box;margin-bottom:8px">
+<div id="chs"></div>
+
+<script>
+const tg = Telegram.WebApp; tg.ready(); tg.expand();
+let S = { categories: [], channels: [] };
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, {
+    method, headers: { "Content-Type": "application/json", "X-Init-Data": tg.initData },
+    body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { alert("Ошибка " + r.status); throw 0; }
+  return r.json();
+}
+async function load() { S = await api("/api/state"); render(); }
+
+function render() {
+  const cats = document.getElementById("cats"); cats.innerHTML = "";
+  S.categories.forEach(c => {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = `<b></b><small>тема ${c.topic_id}, от ${c.min_seconds} с</small>`;
+    d.querySelector("b").textContent = c.name;
+    const b = document.createElement("button"); b.textContent = "✕";
+    b.onclick = async () => { if (confirm("Удалить категорию?")) { await api("/api/categories/" + c.id, "DELETE"); load(); } };
+    d.append(b); cats.append(d);
+  });
+
+  const q = document.getElementById("q").value.toLowerCase();
+  const chs = document.getElementById("chs"); chs.innerHTML = "";
+  S.channels.filter(c => c.title.toLowerCase().includes(q)).forEach(c => {
+    const d = document.createElement("div"); d.className = "ch";
+    const s = document.createElement("span"); s.textContent = c.title;
+    const sel = document.createElement("select");
+    sel.innerHTML = `<option value="">— не отслеживать —</option>`;
+    S.categories.forEach(k => {
+      const o = document.createElement("option");
+      o.value = k.id; o.textContent = k.name;
+      if (k.id === c.category_id) o.selected = true;
+      sel.append(o);
+    });
+    sel.onchange = async () => {
+      c.category_id = sel.value ? +sel.value : null;
+      await api("/api/assign", "POST", { channel_id: c.id, category_id: c.category_id });
+    };
+    d.append(s, sel); chs.append(d);
+  });
+}
+
+async function addCat() {
+  const name = n.value.trim(), topic = +t.value, min = +m.value || 30;
+  if (!name || !topic) return alert("Укажите название и ID темы");
+  await api("/api/categories", "POST", { name, topic_id: topic, min_seconds: min });
+  n.value = t.value = ""; load();
+}
+load();
+</script>
+</body>
+</html>
